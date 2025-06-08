@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Marmara Deprem Haritası</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+    <style>
+        html, body { height: 100%; margin: 0; font-family: Arial, sans-serif; }
+        #map { height: 70vh; }
+        #info {
+            padding: 20px;
+            background: #f4f4f4;
+            height: 30vh;
+            overflow-y: auto;
+        }
+        .question-btn {
+            margin: 5px;
+            padding: 8px 12px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .question-btn:hover {
+            background-color: #0056b3;
+        }
+        #answer-box {
+            margin-top: 15px;
+            background: #e6f3ff;
+            padding: 10px;
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="info">
+    <div id="model-output"><i>Haritadan bir konuma tıklayarak tahmin alın...</i></div>
+    <div id="questions" style="display:none;">
+        <h4>Model hakkında soru seçin:</h4>
+        <div id="question-buttons">
+            <button class="question-btn">Bu risk neden bu kadar yüksek çıktı?</button>
+            <button class="question-btn">Bu tahmin hangi verilere dayanıyor?</button>
+            <button class="question-btn">Bu skorun anlamı nedir?</button>
+            <button class="question-btn">Bu sonucu nasıl yorumlamalıyım?</button>
+            <button class="question-btn">Bu risk gerçek bir deprem olasılığı mı gösteriyor?</button>
+        </div>
+        <div id="answer-box" style="display:none;"></div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+    const map = L.map('map').setView([40.8, 29.2], 7);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 16,
+        attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    let lastContext = "";
+
+    map.on("click", function (e) {
+        fetch("/predict", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: `lat=${e.latlng.lat}&lon=${e.latlng.lng}`
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === "success") {
+                let riskText = "";
+                if (data.risk_score <= 30) riskText = "Düşük risk";
+                else if (data.risk_score <= 60) riskText = "Orta risk";
+                else if (data.risk_score <= 85) riskText = "Yüksek risk";
+                else riskText = "Çok yüksek risk";
+
+                let mwText = "";
+                if (data.magnitude < 4) mwText = "Hissedilmez / Çok hafif";
+                else if (data.magnitude < 5) mwText = "Hafif";
+                else if (data.magnitude < 6) mwText = "Orta şiddetli";
+                else if (data.magnitude < 7) mwText = "Şiddetli";
+                else mwText = "Yıkıcı";
+
+                const modelOutput = `
+                    📍 <b>Şehir:</b> ${data.city}<br>
+                    📊 <b>Risk Skoru:</b> ${data.risk_score} / 100 - ${riskText}<br>
+                    ⚠️ <b>Beklenen Deprem Şiddeti:</b> ${data.magnitude} Mw - ${mwText}<br>
+                    🏷️ <b>Model Sınıfı:</b> ${data.label}
+                `;
+                lastContext = data.context;
+
+                L.popup()
+                    .setLatLng(e.latlng)
+                    .setContent(modelOutput)
+                    .openOn(map);
+
+                document.getElementById("model-output").innerHTML = modelOutput;
+                document.getElementById("questions").style.display = "block";
+                document.getElementById("answer-box").style.display = "none";
+                document.getElementById("answer-box").innerHTML = "";
+            } else {
+                L.popup()
+                    .setLatLng(e.latlng)
+                    .setContent(`<b>📭 Bu bölgede deprem verisi bulunmamaktadır.</b>`)
+                    .openOn(map);
+
+                document.getElementById("model-output").innerHTML = "<i>Bu bölgede deprem verisi bulunmamaktadır.</i>";
+                document.getElementById("questions").style.display = "none";
+                document.getElementById("answer-box").style.display = "none";
+            }
+        });
+    });
+
+    // LLM'e hazır soru gönder
+    document.querySelectorAll(".question-btn").forEach(button => {
+        button.addEventListener("click", () => {
+            const question = button.textContent;
+            fetch("/ask", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: `question=${encodeURIComponent(question)}&context=${encodeURIComponent(lastContext)}`
+            })
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById("answer-box").style.display = "block";
+                document.getElementById("answer-box").innerHTML = `<b>Soru:</b> ${question}<br><b>Cevap:</b> ${data.answer}`;
+            });
+        });
+    });
+</script>
+
+</body>
+</html>

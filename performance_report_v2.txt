@@ -1,0 +1,9 @@
+              precision    recall  f1-score   support
+
+       Hafif       0.88      0.98      0.93      1568
+        Orta       0.38      0.10      0.16       217
+    Şiddetli       0.00      0.00      0.00         5
+
+    accuracy                           0.87      1790
+   macro avg       0.42      0.36      0.36      1790
+weighted avg       0.82      0.87      0.83      1790
